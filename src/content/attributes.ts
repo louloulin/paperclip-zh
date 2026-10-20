@@ -1,4 +1,4 @@
-import { lookup } from "../shared/dictionary";
+import { translate } from "../shared/dictionary";
 
 /** Attributes that carry user-facing copy when set as string literals. */
 export const TRANSLATABLE_ATTRS = ["placeholder", "title", "aria-label", "alt"] as const;
@@ -24,7 +24,7 @@ export function translateAttributes(root: Element | Document): number {
     for (const attr of TRANSLATABLE_ATTRS) {
       const value = el.getAttribute(attr);
       if (value === null || !isCandidate(value)) continue;
-      const zh = lookup(value);
+      const zh = translate(value);
       if (zh === undefined) continue;
       let saved = originals.get(el);
       if (!saved) {

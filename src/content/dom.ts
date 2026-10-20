@@ -1,4 +1,4 @@
-import { lookup } from "../shared/dictionary";
+import { translate } from "../shared/dictionary";
 import { insideSkippedElement, isCandidateText } from "./skip";
 
 /**
@@ -37,7 +37,7 @@ export function translateTree(root: Node): number {
 export function applyToTextNode(node: Text): boolean {
   if (insideSkippedElement(node) || !isCandidateText(node.data)) return false;
   const original = originals.get(node) ?? node.data;
-  const zh = lookup(original);
+  const zh = translate(original);
   if (zh === undefined) {
     originals.set(node, original);
     return false;
