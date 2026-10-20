@@ -53,6 +53,30 @@ describe("translateTree", () => {
     expect(document.body.textContent).toBe("连接模型");
   });
 
+  it("translates a sentence split across adjacent text nodes", () => {
+    const span = document.createElement("span");
+    for (const part of ["0", " running, ", "0", " paused, ", "0", " errors"]) {
+      span.append(document.createTextNode(part));
+    }
+    document.body.append(span);
+    translateTree(document.body);
+    expect(span.textContent).toBe("0 个运行中，0 个暂停，0 个错误");
+    restoreTree(document.body);
+    expect(span.textContent).toBe("0 running, 0 paused, 0 errors");
+  });
+
+  it("re-translates after React rewrites one split node", () => {
+    const span = document.createElement("span");
+    for (const part of ["0", " running, ", "0", " paused, ", "0", " errors"]) {
+      span.append(document.createTextNode(part));
+    }
+    document.body.append(span);
+    translateTree(document.body);
+    span.childNodes[0].nodeValue = "1";
+    translateTree(span);
+    expect(span.textContent).toBe("1 个运行中，0 个暂停，0 个错误");
+  });
+
   it("translates incrementally for SPA-added nodes", () => {
     document.body.innerHTML = "<main></main>";
     translateTree(document.body);

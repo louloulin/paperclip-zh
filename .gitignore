@@ -4,3 +4,4 @@ candidates.json
 *.log
 *.zip
 .DS_Store
+server-candidates.json

@@ -15,10 +15,11 @@ export const SKIP_SELECTOR = [
 ].join(",");
 
 /** Inside these elements the text is data, not UI copy. */
-export function insideSkippedElement(node: Text): boolean {
-  const parent = node.parentElement;
-  if (!parent) return true;
-  return parent.closest(SKIP_SELECTOR) !== null;
+export function insideSkippedElement(node: Node): boolean {
+  const element =
+    node.nodeType === 1 ? (node as Element) : (node as Text).parentElement;
+  if (!element) return true;
+  return element.closest(SKIP_SELECTOR) !== null;
 }
 
 /**

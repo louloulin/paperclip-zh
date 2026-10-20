@@ -19,6 +19,16 @@ describe("dictionary templates", () => {
     expect(lookupTemplate("2 running, 0 paused, 1 errors")).toBe("2 个运行中，0 个暂停，1 个错误");
   });
 
+  it("gives repeated placeholder names their own values", () => {
+    expect(lookupTemplate("2 open, 5 blocked")).toBe("2 个进行中，5 个已阻塞");
+  });
+
+  it("translates captured enum values on an exact dictionary hit", () => {
+    expect(lookupTemplate("changed status from in progress to in review on")).toBe(
+      "将状态从进行中改为审核中：",
+    );
+  });
+
   it("does not match a longer sentence or an unrelated string", () => {
     expect(lookupTemplate("Showing up to 50 of the tasks in the list")).toBeUndefined();
     expect(lookupTemplate("Something else entirely")).toBeUndefined();

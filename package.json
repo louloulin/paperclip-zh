@@ -10,6 +10,8 @@
     "test": "vitest run",
     "watch": "node scripts/build.mjs --watch",
     "extract": "node scripts/extract-strings.mjs",
+    "extract:server": "node scripts/extract-server-strings.mjs",
+    "coverage": "node scripts/coverage.mjs",
     "package": "node scripts/package.mjs"
   },
   "devDependencies": {

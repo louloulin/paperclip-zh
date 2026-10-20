@@ -39,6 +39,22 @@ describe("translateJson (response whitelist translation)", () => {
     expect(out.message.message).toBe("需要连接管理权限");
   });
 
+  it("uses templates for dynamic error text but not for user content", () => {
+    const body = {
+      error: "Attachment is larger than the 10MB limit",
+      title: "Showing up to 50",
+    };
+    const out = translateJson(body) as typeof body;
+    expect(out.error).toBe("附件超过 10MB 限制");
+    expect(out.title).toBe("Showing up to 50");
+  });
+
+  it("translates a string array under errors", () => {
+    const body = { errors: ["Access denied", "Board access required"] };
+    const out = translateJson(body) as typeof body;
+    expect(out.errors).toEqual(["访问被拒绝", "需要看板访问权限"]);
+  });
+
   it("passes through non-strings and keeps the same object when nothing changed", () => {
     const body = { count: 3, items: ["a", "b"], flag: true };
     expect(translateJson(body)).toBe(body);

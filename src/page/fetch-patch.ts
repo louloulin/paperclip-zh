@@ -1,11 +1,17 @@
-import { lookup } from "../shared/dictionary";
+import { lookup, translate } from "../shared/dictionary";
 import { readMirror } from "../content/state";
 
 /**
  * Runs in the page's MAIN world (chrome.* is unavailable), so settings come
  * from the localStorage mirror the content script maintains.
+ *
+ * Error fields may contain dynamic values ("Attachment is larger than the
+ * 10MB limit"), so they also go through templates. User-content fields
+ * (title/description/summary) stay exact-match only: a task literally named
+ * "Showing up to 50" must not be rewritten by a UI template.
  */
-const WHITELIST = new Set(["error", "message", "detail", "hint", "title", "description", "summary"]);
+const ERROR_FIELDS = new Set(["error", "message", "detail", "hint", "error_description"]);
+const EXACT_FIELDS = new Set(["title", "description", "summary"]);
 const MAX_DEPTH = 8;
 
 function packEnabled(): boolean {
@@ -42,13 +48,22 @@ export function translateJson<T>(value: T, depth = 0): T {
     let changed = false;
     const out: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-      if (typeof item === "string" && WHITELIST.has(key)) {
-        const zh = lookup(item);
+      if (typeof item === "string" && (ERROR_FIELDS.has(key) || EXACT_FIELDS.has(key))) {
+        const zh = ERROR_FIELDS.has(key) ? translate(item) : lookup(item);
         if (zh !== undefined && zh !== item) {
           out[key] = zh;
           changed = true;
           continue;
         }
+      }
+      if (key === "errors" && Array.isArray(item)) {
+        const next = item.map((entry) =>
+          typeof entry === "string" ? (translate(entry) ?? entry) : translateJson(entry, depth + 1),
+        );
+        const arrayChanged = next.some((entry, index) => entry !== item[index]);
+        if (arrayChanged) changed = true;
+        out[key] = arrayChanged ? next : item;
+        continue;
       }
       const next = translateJson(item, depth + 1);
       if (next !== item) changed = true;

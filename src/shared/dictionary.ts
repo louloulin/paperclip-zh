@@ -79,8 +79,23 @@ export function lookupTemplate(text: string): string | undefined {
   for (const entry of templates) {
     const match = entry.pattern.exec(normalized);
     if (!match) continue;
-    const captured = entry.names.map((_, index) => match[index + 1] ?? "");
-    if (!captured.every(isPlausibleValue)) continue;
+    const raw = entry.names.map((_, index) => match[index + 1] ?? "");
+    if (!raw.every(isPlausibleValue)) continue;
+    // Captured values are often enum text ("in progress", "high"). Translate
+    // them only on an exact dictionary hit so counts and names pass through.
+    const captured = raw.map((value) => dictionary.get(normalizeKey(value)) ?? value);
+    // Positional replacement keeps `{count} open, {count} blocked` correct:
+    // the same placeholder name appears twice but each occurrence takes its
+    // own captured value. When a translation drops a placeholder, fall back
+    // to name-based substitution so the remaining names still resolve.
+    const parts = entry.template.split(/(\{[A-Za-z0-9_.-]+\})/);
+    const placeholderCount = parts.filter((part) => /^\{[A-Za-z0-9_.-]+\}$/.test(part)).length;
+    if (placeholderCount === entry.names.length) {
+      let index = 0;
+      return parts
+        .map((part) => (/^\{[A-Za-z0-9_.-]+\}$/.test(part) ? (captured[index++] ?? "") : part))
+        .join("");
+    }
     let result = entry.template;
     entry.names.forEach((name, index) => {
       result = result.split(`{${name}}`).join(captured[index]);
