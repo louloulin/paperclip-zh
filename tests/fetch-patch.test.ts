@@ -1,0 +1,55 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import { translateJson } from "../src/page/fetch-patch";
+
+describe("translateJson (response whitelist translation)", () => {
+  beforeEach(() => {
+    // The MAIN-world module reads the localStorage mirror written by the
+    // content script; tests run with defaults (enabled, auto). Force zh.
+    window.localStorage.setItem(
+      "paperclip-zh-pack.settings",
+      JSON.stringify({ enabled: true, override: "zh-CN" }),
+    );
+  });
+
+  it("translates whitelist fields that exactly match the dictionary", () => {
+    const body = {
+      error: "Project authentication settings conflict with the selected AI connection",
+      details: [{ message: "Manage connections permission is required" }],
+    };
+    const out = translateJson(body) as typeof body;
+    expect(out.error).toBe("所选 AI 连接与项目认证设置冲突");
+    expect(out.details[0].message).toBe("需要连接管理权限");
+  });
+
+  it("leaves misses, data fields, and ids untouched", () => {
+    const body = {
+      error: "some untranslated error",
+      id: "Dashboard",
+      name: "Dashboard",
+      status: "connected",
+      model: "MiniMax-M3.1-Flash",
+    };
+    const out = translateJson(body) as Record<string, string>;
+    expect(out).toEqual(body);
+  });
+
+  it("walks nested arrays and objects with a depth cap", () => {
+    const deep = { message: { message: "Manage connections permission is required" } };
+    const out = translateJson(deep) as typeof deep;
+    expect(out.message.message).toBe("需要连接管理权限");
+  });
+
+  it("passes through non-strings and keeps the same object when nothing changed", () => {
+    const body = { count: 3, items: ["a", "b"], flag: true };
+    expect(translateJson(body)).toBe(body);
+  });
+
+  it("does nothing while disabled", () => {
+    window.localStorage.setItem(
+      "paperclip-zh-pack.settings",
+      JSON.stringify({ enabled: false, override: "zh-CN" }),
+    );
+    const body = { error: "Project authentication settings conflict with the selected AI connection" };
+    expect(translateJson(body)).toBe(body);
+  });
+});

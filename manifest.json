@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Paperclip 中文语言包",
+  "version": "0.1.0",
+  "description": "Paperclip 界面与接口消息汉化。独立语言包，不修改宿主应用。",
+  "permissions": ["storage"],
+  "host_permissions": ["http://localhost:3121/*"],
+  "content_scripts": [
+    {
+      "matches": ["http://localhost:3121/*"],
+      "js": ["dist/content-script.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["http://localhost:3121/*"],
+      "js": ["dist/page-patch.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ],
+  "background": {
+    "service_worker": "dist/background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Paperclip 中文语言包"
+  }
+}
