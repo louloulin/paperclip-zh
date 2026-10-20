@@ -5,3 +5,4 @@ candidates.json
 *.zip
 .DS_Store
 server-candidates.json
+*.tgz

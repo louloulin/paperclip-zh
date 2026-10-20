@@ -5,6 +5,20 @@
   "description": "Standalone Chinese language pack for Paperclip — browser extension, zero host changes",
   "type": "module",
   "license": "MIT",
+  "bin": {
+    "paperclip-zh-pack": "bin/cli.mjs"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "manifest.json",
+    "popup.html",
+    "dict",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "vitest run",
@@ -12,7 +26,9 @@
     "extract": "node scripts/extract-strings.mjs",
     "extract:server": "node scripts/extract-server-strings.mjs",
     "coverage": "node scripts/coverage.mjs",
-    "package": "node scripts/package.mjs"
+    "serve": "node bin/cli.mjs serve",
+    "package": "node scripts/package.mjs",
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
     "@types/chrome": "^0.1.0",

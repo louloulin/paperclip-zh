@@ -15,6 +15,7 @@ function active(): boolean {
 }
 
 async function persistStats(): Promise<void> {
+  if (typeof chrome === "undefined" || !chrome.storage?.session) return;
   try {
     await chrome.storage.session.set({ packStats: { hits, dictVersion: DICT_VERSION } });
   } catch {
@@ -25,7 +26,9 @@ async function persistStats(): Promise<void> {
 function run(root: ParentNode = document): void {
   if (!active()) return;
   let changed = translateTree(root);
-  changed += translateAttributes(root instanceof Document ? root : (root as Element));
+  if (root instanceof Element || root instanceof Document || root instanceof DocumentFragment) {
+    changed += translateAttributes(root);
+  }
   if (changed > 0) {
     hits += changed;
     void persistStats();
@@ -47,7 +50,8 @@ function applySettings(next: { enabled: boolean; locale: UiLocale; agentLanguage
 }
 
 async function init(): Promise<void> {
-  if (typeof chrome === "undefined" || !chrome.storage?.sync) return;
+  // Works both as an extension content script and as a proxied page script:
+  // loadSettings falls back to the localStorage mirror when chrome.* is absent.
   const settings = await loadSettings();
   settingsOverride = settings.override;
   settingsAgentLanguage = settings.agentLanguage;
@@ -83,7 +87,14 @@ async function init(): Promise<void> {
         }
         for (const node of mutation.addedNodes) {
           if (node.nodeType === Node.ELEMENT_NODE || node.nodeType === Node.TEXT_NODE) {
-            roots.add(node.parentElement ?? (node as ParentNode));
+            const parent = node.parentElement ?? node.parentNode;
+            if (
+              parent instanceof Element ||
+              parent instanceof Document ||
+              parent instanceof DocumentFragment
+            ) {
+              roots.add(parent);
+            }
           }
         }
       }

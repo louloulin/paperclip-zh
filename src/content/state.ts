@@ -90,10 +90,12 @@ export function onSettingsChanged(callback: (settings: PackSettings) => void): (
       callback(parseSettings(event.newValue === null ? undefined : JSON.parse(event.newValue)));
     }
   };
-  chrome.storage.onChanged.addListener(fromChrome);
+  // Proxy mode runs without chrome.*; the localStorage mirror is the only bus.
+  const hasChrome = typeof chrome !== "undefined" && Boolean(chrome.storage?.onChanged);
+  if (hasChrome) chrome.storage.onChanged.addListener(fromChrome);
   window.addEventListener("storage", fromWindow);
   return () => {
-    chrome.storage.onChanged.removeListener(fromChrome);
+    if (hasChrome) chrome.storage.onChanged.removeListener(fromChrome);
     window.removeEventListener("storage", fromWindow);
   };
 }

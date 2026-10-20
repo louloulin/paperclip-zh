@@ -4,15 +4,15 @@
   "version": "0.1.0",
   "description": "Paperclip 界面与接口消息汉化。独立语言包，不修改宿主应用。",
   "permissions": ["storage"],
-  "host_permissions": ["http://localhost:3121/*"],
+  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
   "content_scripts": [
     {
-      "matches": ["http://localhost:3121/*"],
+      "matches": ["http://localhost/*", "http://127.0.0.1/*"],
       "js": ["dist/content-script.js"],
       "run_at": "document_start"
     },
     {
-      "matches": ["http://localhost:3121/*"],
+      "matches": ["http://localhost/*", "http://127.0.0.1/*"],
       "js": ["dist/page-patch.js"],
       "run_at": "document_start",
       "world": "MAIN"

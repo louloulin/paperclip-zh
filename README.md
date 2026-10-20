@@ -12,7 +12,26 @@ Paperclip 的**独立中文语言包**：一个浏览器扩展（MV3），以词
 
 ### 匹配域名
 
-`manifest.json` 的 `content_scripts.matches` 默认只含 `http://localhost:3121/*`。部署到其他域名时把对应 origin 加进两个 content_scripts 条目与 `host_permissions`。
+`manifest.json` 的 `content_scripts.matches` 默认覆盖 `http://localhost/*` 与 `http://127.0.0.1/*`（Chrome 匹配模式不限制端口）。部署到其他域名时把对应 origin 加进两个 content_scripts 条目与 `host_permissions`。
+
+## 通过 npm 安装
+
+```sh
+# 在本仓库、私有 registry 或 tarball 上
+npm install -g paperclip-zh-pack
+
+paperclip-zh-pack install            # 准备可加载的扩展目录
+paperclip-zh-pack install --dir ./ext
+
+# 或者完全不使用浏览器扩展：
+paperclip-zh-pack serve              # http://127.0.0.1:3122 → 上游 :3121
+paperclip-zh-pack serve --target http://localhost:3121 --port 3122
+```
+
+- `install`：把 `manifest.json`、`popup.html`、`dist/` 复制到 `~/.paperclip-zh-pack/extension`，并打印最后一步。**浏览器安全策略不允许 npm/CLI 自动注册扩展**，所以「加载已解压的扩展程序」必须手动点一次。
+- `serve`：真正的一键 npm 模式。本地反向代理把同一份 `page-patch.js` 与 `content-script.js` 注入 Paperclip 的 HTML，无需扩展；WebSocket/HMR 会原样转发。打开代理地址即可。
+- 代理模式下没有 `chrome.*`，设置保存在同源 `localStorage`；配置页为 `http://127.0.0.1:3122/__paperclip_zh_pack/popup.html`。
+- 未发布到公共 npm registry；可用 `npm pack` 生成 tarball，或发布到私有 registry。`prepublishOnly` 会先构建 `dist/`。
 
 ## 架构
 
