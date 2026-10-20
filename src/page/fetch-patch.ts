@@ -1,5 +1,5 @@
 import { lookup, translate } from "../shared/dictionary";
-import { readMirror } from "../content/state";
+import { readMirror, type PackSettings } from "../content/state";
 
 /**
  * Runs in the page's MAIN world (chrome.* is unavailable), so settings come
@@ -19,13 +19,85 @@ function packEnabled(): boolean {
   return settings.enabled && resolveLocaleZh(settings.override);
 }
 
-function resolveLocaleZh(override: string): boolean {
+function resolveLocaleZh(override: string, languages?: readonly string[]): boolean {
   if (override === "zh-CN") return true;
   if (override === "en") return false;
-  for (const tag of navigator.languages ?? [navigator.language]) {
+  for (const tag of languages ?? navigator.languages ?? [navigator.language]) {
     if (tag.toLowerCase().startsWith("zh")) return true;
   }
   return false;
+}
+
+/** Reply language for agent conversations, derived from the pack settings. */
+export type ReplyLocale = "zh-CN" | "en";
+
+export function resolveReplyLocale(
+  settings: PackSettings,
+  languages?: readonly string[],
+): ReplyLocale | null {
+  if (settings.agentLanguage === "off") return null;
+  if (settings.agentLanguage === "zh-CN") return "zh-CN";
+  if (settings.agentLanguage === "en") return "en";
+  return resolveLocaleZh(settings.override, languages) ? "zh-CN" : "en";
+}
+
+/**
+ * HTML comments are dropped by Paperclip's markdown renderer, so the
+ * directive reaches the agent in the raw comment without showing up in the
+ * thread. It is advisory: the agent keeps its tools and data formats.
+ */
+const DIRECTIVES: Record<ReplyLocale, string> = {
+  "zh-CN":
+    "<!-- paperclip-zh-pack:lang=zh-CN Reply in Simplified Chinese (简体中文). " +
+    "Keep code, commands, file paths, identifiers, and quoted logs unchanged. -->",
+  en:
+    "<!-- paperclip-zh-pack:lang=en Reply in English. " +
+    "Keep code, commands, file paths, identifiers, and quoted logs unchanged. -->",
+};
+
+export function languageDirective(locale: ReplyLocale | null): string | null {
+  return locale === null ? null : DIRECTIVES[locale];
+}
+
+const EXISTING_DIRECTIVE = /<!--\s*paperclip-zh-pack:lang=[\s\S]*?-->/g;
+
+/** Append (or replace) the hidden directive at the end of a comment body. */
+export function appendLanguageDirective(body: string, directive: string): string {
+  const cleaned = body.replace(EXISTING_DIRECTIVE, "").trimEnd();
+  return `${cleaned}\n\n${directive}`;
+}
+
+const ISSUE_COMMENT_PATH = /\/api\/issues\/[^/?#]+\/comments(?:\?|$)/;
+
+/**
+ * Rewrite `POST /api/issues/:id/comments` so the agent receives a reply
+ * language. All other requests, methods, and non-JSON bodies pass through.
+ */
+export function withLanguageDirective(
+  url: string,
+  init: RequestInit | undefined,
+  directive: string | null,
+): RequestInit | undefined {
+  if (directive === null) return init;
+  if ((init?.method ?? "GET").toUpperCase() !== "POST") return init;
+  if (!ISSUE_COMMENT_PATH.test(url)) return init;
+  if (typeof init?.body !== "string") return init;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(init.body);
+  } catch {
+    return init;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return init;
+  const record = parsed as Record<string, unknown>;
+  if (typeof record.body !== "string" || record.body.trim() === "") return init;
+  return {
+    ...init,
+    body: JSON.stringify({
+      ...record,
+      body: appendLanguageDirective(record.body, directive),
+    }),
+  };
 }
 
 /**
@@ -87,8 +159,24 @@ function translatedResponse(response: Response, body: unknown): Response {
 
 export function installFetchPatch(target: { fetch: typeof fetch } = window): void {
   const original = target.fetch.bind(target);
-  target.fetch = async (...args: Parameters<typeof fetch>): Promise<Response> => {
-    const response = await original(...args);
+  target.fetch = async (
+    input: Parameters<typeof fetch>[0],
+    init?: Parameters<typeof fetch>[1],
+  ): Promise<Response> => {
+    let nextInit = init;
+    try {
+      const settings = readMirror();
+      if (settings.enabled && typeof input === "string") {
+        nextInit = withLanguageDirective(
+          input,
+          init,
+          languageDirective(resolveReplyLocale(settings)),
+        );
+      }
+    } catch {
+      // A malformed mirror must never break the request.
+    }
+    const response = await original(input, nextInit);
     try {
       if (!packEnabled()) return response;
       const contentType = response.headers.get("content-type") ?? "";

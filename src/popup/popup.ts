@@ -4,16 +4,21 @@ const SETTINGS_KEY = "paperclip-zh-pack.settings";
 
 const enabledBox = document.getElementById("enabled") as HTMLInputElement;
 const overrideSelect = document.getElementById("override") as HTMLSelectElement;
+const agentLanguageSelect = document.getElementById("agent-language") as HTMLSelectElement;
 const stats = document.getElementById("stats") as HTMLDivElement;
+
+type AgentLanguage = "auto" | "en" | "zh-CN" | "off";
 
 async function boot(): Promise<void> {
   const stored = await chrome.storage.sync.get(SETTINGS_KEY);
-  const settings = (stored[SETTINGS_KEY] ?? { enabled: true, override: "auto" }) as {
+  const settings = (stored[SETTINGS_KEY] ?? { enabled: true, override: "auto", agentLanguage: "auto" }) as {
     enabled: boolean;
     override: "auto" | "en" | "zh-CN";
+    agentLanguage?: AgentLanguage;
   };
   enabledBox.checked = settings.enabled;
   overrideSelect.value = settings.override;
+  agentLanguageSelect.value = settings.agentLanguage ?? "auto";
 
   const session = await chrome.storage.session.get("packStats");
   const value = session.packStats as { hits?: number; dictVersion?: string } | undefined;
@@ -31,6 +36,14 @@ overrideSelect.addEventListener("change", async () => {
   const settings = stored[SETTINGS_KEY] ?? { enabled: true };
   await chrome.storage.sync.set({
     [SETTINGS_KEY]: { ...settings, override: overrideSelect.value as "auto" | "en" | "zh-CN" },
+  });
+});
+
+agentLanguageSelect.addEventListener("change", async () => {
+  const stored = await chrome.storage.sync.get(SETTINGS_KEY);
+  const settings = stored[SETTINGS_KEY] ?? { enabled: true };
+  await chrome.storage.sync.set({
+    [SETTINGS_KEY]: { ...settings, agentLanguage: agentLanguageSelect.value as AgentLanguage },
   });
 });
 

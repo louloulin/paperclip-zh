@@ -2,11 +2,12 @@ import { DICT_VERSION, dictionary } from "../shared/dictionary";
 import { resolveLocale, type LocaleOverride, type UiLocale } from "./negotiation";
 import { restoreAttributes, translateAttributes } from "./attributes";
 import { restoreTree, translateTree } from "./dom";
-import { loadSettings, mirrorToLocalStorage, onSettingsChanged } from "./state";
+import { loadSettings, mirrorToLocalStorage, onSettingsChanged, type AgentLanguage } from "./state";
 
 let enabled = true;
 let locale: UiLocale = "en";
 let settingsOverride: LocaleOverride = "auto";
+let settingsAgentLanguage: AgentLanguage = "auto";
 let hits = 0;
 
 function active(): boolean {
@@ -31,11 +32,12 @@ function run(root: ParentNode = document): void {
   }
 }
 
-function applySettings(next: { enabled: boolean; locale: UiLocale }): void {
+function applySettings(next: { enabled: boolean; locale: UiLocale; agentLanguage: AgentLanguage }): void {
   const wasActive = active();
   enabled = next.enabled;
   locale = next.locale;
-  mirrorToLocalStorage({ enabled, override: settingsOverride });
+  settingsAgentLanguage = next.agentLanguage;
+  mirrorToLocalStorage({ enabled, override: settingsOverride, agentLanguage: settingsAgentLanguage });
   if (active() && !wasActive) {
     run(document);
   } else if (!active() && wasActive) {
@@ -48,9 +50,10 @@ async function init(): Promise<void> {
   if (typeof chrome === "undefined" || !chrome.storage?.sync) return;
   const settings = await loadSettings();
   settingsOverride = settings.override;
+  settingsAgentLanguage = settings.agentLanguage;
   locale = resolveLocale(settings.override, navigator.languages ?? [navigator.language]);
   enabled = settings.enabled;
-  mirrorToLocalStorage({ enabled, override: settings.override });
+  mirrorToLocalStorage({ enabled, override: settings.override, agentLanguage: settings.agentLanguage });
   if (active()) run(document);
 
   onSettingsChanged((next) => {
@@ -58,6 +61,7 @@ async function init(): Promise<void> {
     applySettings({
       enabled: next.enabled,
       locale: resolveLocale(next.override, navigator.languages ?? [navigator.language]),
+      agentLanguage: next.agentLanguage,
     });
   });
 

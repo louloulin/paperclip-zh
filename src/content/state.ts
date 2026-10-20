@@ -1,5 +1,8 @@
 import type { LocaleOverride } from "./negotiation";
 
+/** Language the agent should answer in; `auto` follows the resolved UI locale. */
+export type AgentLanguage = "auto" | "en" | "zh-CN" | "off";
+
 /**
  * Pack settings. The popup and background write `chrome.storage.sync`; the
  * content script mirrors the effective state into localStorage so the
@@ -9,12 +12,17 @@ import type { LocaleOverride } from "./negotiation";
 export interface PackSettings {
   enabled: boolean;
   override: LocaleOverride;
+  agentLanguage: AgentLanguage;
 }
 
 export const SETTINGS_STORAGE_KEY = "paperclip-zh-pack.settings";
 const MIRROR_KEY = "paperclip-zh-pack.settings";
 
-export const DEFAULT_SETTINGS: PackSettings = { enabled: true, override: "auto" };
+export const DEFAULT_SETTINGS: PackSettings = {
+  enabled: true,
+  override: "auto",
+  agentLanguage: "auto",
+};
 
 export function parseSettings(raw: unknown): PackSettings {
   if (typeof raw !== "object" || raw === null) return { ...DEFAULT_SETTINGS };
@@ -26,6 +34,13 @@ export function parseSettings(raw: unknown): PackSettings {
       value.override === "en" || value.override === "zh-CN" || value.override === "auto"
         ? value.override
         : DEFAULT_SETTINGS.override,
+    agentLanguage:
+      value.agentLanguage === "en" ||
+      value.agentLanguage === "zh-CN" ||
+      value.agentLanguage === "auto" ||
+      value.agentLanguage === "off"
+        ? value.agentLanguage
+        : DEFAULT_SETTINGS.agentLanguage,
   };
 }
 

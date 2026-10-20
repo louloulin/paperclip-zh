@@ -22,7 +22,8 @@ Paperclip 的**独立中文语言包**：一个浏览器扩展（MV3），以词
 | 接口消息 | `src/page/fetch-patch.ts` | MAIN world 包装 `fetch`，对 JSON 响应做翻译：错误字段（`error/message/detail/hint/error_description` + `errors[]`）支持模板，用户内容字段（`title/description/summary`）仅精确匹配 |
 | 语言协商 | `src/content/negotiation.ts` | override(auto/en/zh-CN) → navigator → en；`Intl.Locale` 归一 `zh*` → zh-CN（同 codex-host） |
 | 词典 | `dict/zh-CN.json` | 扁平 `{ "Exact English": "中文" }`；含 `{placeholder}` 的 key 作为模板（非贪婪捕获 + 值合理性校验）；未命中回退原文 |
-| 开关/选择 | `src/popup/` + `src/background.ts` | chrome.storage.sync 存储；content script 镜像到 localStorage 供 MAIN world 读取 |
+| 开关/选择 | `src/popup/` + `src/background.ts` | chrome.storage.sync 存储（界面语言 + 对话语言）；content script 镜像到 localStorage 供 MAIN world 读取 |
+| 对话语言 | `src/page/fetch-patch.ts` | 按配置给 `POST /api/issues/:id/comments` 追加隐藏 HTML 注释指令；Paperclip 渲染器会丢弃 HTML 注释，用户在界面上看不到，但智能体读取原文时能看到 |
 | 词条抽取 | `scripts/extract-strings.mjs` | 只读扫描前端 TSX，输出候选词条+频次 |
 | 服务端词条 | `scripts/extract-server-strings.mjs` | 只读扫描 `server/src` 与 `packages/shared/src` 的 JSON 错误字段，含模板字面量转 `{name}` |
 | 覆盖率 | `scripts/coverage.mjs` | 用与运行时相同的词典匹配逻辑统计前端/服务端候选覆盖率 |
@@ -46,6 +47,39 @@ npm run coverage          # 统计前端/服务端候选覆盖率与未覆盖高
 - 长尾（仅出现 1 次）：前端 4.5%、服务端 18.9%（多为一次性功能页与内部提示）
 
 已知限制：XHR（非 fetch）请求不在补丁范围；服务端持久化数据保持英文原样、仅在展示层翻译；第三方目录内容（技能描述、应用市场介绍）与用户生成内容不译。
+
+## 对话语言（智能体按配置语言回复）
+
+扩展弹窗的「对话语言」有四个选项：
+
+| 选项 | 行为 |
+| --- | --- |
+| 跟随界面 | 界面解析为中文时追加中文指令，否则追加英文指令（默认） |
+| 简体中文 | 始终要求智能体用简体中文回复 |
+| English | 始终要求智能体用英文回复 |
+| 不干预 | 不修改任何请求 |
+
+实现方式：向 `POST /api/issues/:id/comments` 的 `body` 末尾追加一条 HTML 注释，例如：
+
+```html
+<!-- paperclip-zh-pack:lang=zh-CN Reply in Simplified Chinese (简体中文).
+     Keep code, commands, file paths, identifiers, and quoted logs unchanged. -->
+```
+
+Paperclip 的 `MarkdownBody` 用 `remarkDropHtmlComments` 丢弃 HTML 注释，因此线程里不会显示这段文字；智能体读取原始评论时可以看到并遵循它。指令只约束自然语言，代码、命令、路径、标识符和引用日志保持原样。重复发送会自动替换旧指令，不会累积。
+
+**定时/例行任务**没有用户评论，因此不会被该机制影响。若要让所有运行都遵循同一语言，把下面这句加入智能体的全局指令（AGENTS.md 或智能体 Instructions）：
+
+```text
+Always respond in Simplified Chinese (简体中文). Keep code, commands, file paths,
+identifiers, and quoted logs unchanged.
+```
+
+英文版：
+
+```text
+Always respond in English. Keep code, commands, file paths, identifiers, and quoted logs unchanged.
+```
 
 ## 开发
 
