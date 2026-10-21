@@ -15,6 +15,19 @@ const originals = new WeakMap<Text, string>();
  */
 const written = new WeakMap<Text, string>();
 
+/**
+ * Nodes whose current data is a group translation (the first node carries the
+ * whole label, its siblings are blanked). Without this, a node that is both
+ * individually translatable and part of a translatable group ("Showing" +
+ * " up to 50") would be rewritten by the per-node pass and the group pass on
+ * every mutation — an observer-driven infinite loop that freezes the tab.
+ */
+const grouped = new WeakSet<Text>();
+
+/** Bounds for JSX-split labels; longer runs are content, never UI copy. */
+const MAX_GROUP_PIECE = 1000;
+const MAX_GROUP_TEXT = 2000;
+
 function acceptNode(node: Text): number {
   if (insideSkippedElement(node)) return NodeFilter.FILTER_REJECT;
   if (!isCandidateText(node.data)) return NodeFilter.FILTER_REJECT;
@@ -69,7 +82,12 @@ function translateTextGroups(root: Node): number {
     if (nodes.length !== element.childNodes.length || nodes.length < 2) continue;
 
     const pieces = nodes.map(effectiveText);
+    // Grouped text is usually a short label. Long concatenations are rendered
+    // documents; joining and template-matching them on every mutation is pure
+    // overhead and never produces a dictionary hit.
+    if (pieces.some((piece) => piece.length > MAX_GROUP_PIECE)) continue;
     const combined = pieces.join("");
+    if (combined.length > MAX_GROUP_TEXT) continue;
     const zh = translate(combined);
     if (zh === undefined) continue;
 
@@ -85,6 +103,7 @@ function translateTextGroups(root: Node): number {
       const value = index === 0 ? next : "";
       node.data = value;
       written.set(node, value);
+      grouped.add(node);
     });
     changed += 1;
   }
@@ -98,8 +117,12 @@ function effectiveText(node: Text): string {
 
 /** Translate one text node. Returns true when the node's data changed. */
 export function applyToTextNode(node: Text): boolean {
+  // Our group output is intact: the group pass owns this node.
+  if (grouped.has(node) && written.get(node) === node.data) return false;
   if (insideSkippedElement(node) || !isCandidateText(node.data)) return false;
-  const original = originals.get(node) ?? node.data;
+  // `effectiveText` (not `originals`) so a value rewritten by React is
+  // translated instead of the stale English we remembered.
+  const original = effectiveText(node);
   const zh = translate(original);
   if (zh === undefined) {
     originals.set(node, original);

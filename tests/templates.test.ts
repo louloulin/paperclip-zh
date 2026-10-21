@@ -10,6 +10,13 @@ describe("dictionary templates", () => {
     }
   });
 
+  it("resolves a sample instance of every template through the first-word index", () => {
+    for (const entry of templates) {
+      const sample = entry.key.replace(/\{[A-Za-z0-9_.-]+\}/g, "7");
+      expect(lookupTemplate(sample), entry.key).not.toBeUndefined();
+    }
+  });
+
   it("matches dynamic text and re-inserts the captured value", () => {
     expect(lookupTemplate("Showing up to 50")).toBe("最多显示 50 条");
     expect(lookupTemplate("Finished 7m ago")).toBe("7m 前完成");

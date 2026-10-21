@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { translateJson } from "../src/page/fetch-patch";
 
 describe("translateJson (response whitelist translation)", () => {
@@ -58,6 +58,29 @@ describe("translateJson (response whitelist translation)", () => {
   it("passes through non-strings and keeps the same object when nothing changed", () => {
     const body = { count: 3, items: ["a", "b"], flag: true };
     expect(translateJson(body)).toBe(body);
+  });
+
+  it("reads the settings mirror once per payload, not once per node", () => {
+    const payload = {
+      items: Array.from({ length: 500 }, (_, index) => ({
+        id: index,
+        message: "ok",
+        nested: { index, label: "item" },
+      })),
+    };
+    const spy = vi.spyOn(Storage.prototype, "getItem");
+    translateJson(payload);
+    const reads = spy.mock.calls.filter(([key]) => key === "paperclip-zh-pack.settings").length;
+    spy.mockRestore();
+    expect(reads).toBeLessThanOrEqual(1);
+  });
+
+  it("keeps untouched subtrees and their identity after a partial hit", () => {
+    const untouched = { id: "x", items: [1, 2, 3] };
+    const body = { error: "Access denied", untouched };
+    const out = translateJson(body) as typeof body;
+    expect(out.error).toBe("访问被拒绝");
+    expect(out.untouched).toBe(untouched);
   });
 
   it("does nothing while disabled", () => {

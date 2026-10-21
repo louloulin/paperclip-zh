@@ -23,6 +23,9 @@ import { STATIC_PREFIX, injectScripts, rewriteLocation } from "./proxy-utils.mjs
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+/** Long enough for slow dev-server responses, short enough to fail visibly. */
+const UPSTREAM_TIMEOUT_MS = 120_000;
+
 const args = process.argv.slice(2);
 const command = args[0] ?? "help";
 
@@ -120,6 +123,9 @@ function serve() {
     const headers = {
       ...req.headers,
       host: target.host,
+      // Dev servers may validate the Origin against their own host; present
+      // the upstream origin instead of the loopback proxy origin.
+      ...(req.headers.origin ? { origin: target.origin } : {}),
       // Ask for identity so HTML can be rewritten; Node re-chunks the body.
       "accept-encoding": "identity",
     };
@@ -158,11 +164,18 @@ function serve() {
       },
     );
 
+    // A hung upstream must not leave the browser waiting forever.
+    upstream.setTimeout(UPSTREAM_TIMEOUT_MS, () => {
+      upstream.destroy(new Error(`upstream timed out after ${UPSTREAM_TIMEOUT_MS}ms`));
+    });
     upstream.on("error", (error) => {
+      console.error(`[paperclip-zh-pack] ${req.method} ${req.url} → ${error.message}`);
       if (!res.headersSent) {
         res.writeHead(502, { "content-type": "text/plain; charset=utf-8" });
+        res.end(`paperclip-zh-pack proxy error: ${error.message}`);
+        return;
       }
-      res.end(`paperclip-zh-pack proxy error: ${error.message}`);
+      res.destroy(error);
     });
     req.pipe(upstream);
   });
@@ -170,7 +183,15 @@ function serve() {
   // Vite HMR and any app WebSocket need the upgrade hop forwarded verbatim.
   server.on("upgrade", (req, socket, head) => {
     const lines = [`${req.method} ${req.url} HTTP/1.1`];
-    for (const [key, value] of Object.entries({ ...req.headers, host: target.host })) {
+    const upgradeHeaders = {
+      ...req.headers,
+      host: target.host,
+      ...(req.headers.origin ? { origin: target.origin } : {}),
+      ...(req.headers["sec-websocket-origin"]
+        ? { "sec-websocket-origin": target.origin }
+        : {}),
+    };
+    for (const [key, value] of Object.entries(upgradeHeaders)) {
       lines.push(`${key}: ${Array.isArray(value) ? value.join(", ") : value}`);
     }
     const toTarget = isTls

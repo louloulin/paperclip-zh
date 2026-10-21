@@ -77,6 +77,34 @@ describe("translateTree", () => {
     expect(span.textContent).toBe("1 个运行中，0 个暂停，0 个错误");
   });
 
+  it("does not fight itself when a split node is also an exact-hit key", () => {
+    // "Showing" is an exact key and the group "Showing up to 50" is a
+    // template, so the per-node and group passes used to rewrite each other
+    // forever. A second pass must be a no-op.
+    const span = document.createElement("span");
+    for (const part of ["Showing", " up to ", "50"]) {
+      span.append(document.createTextNode(part));
+    }
+    document.body.append(span);
+    translateTree(document.body);
+    expect(span.textContent).toBe("最多显示 50 条");
+    expect(translateTree(document.body)).toBe(0);
+    expect(span.textContent).toBe("最多显示 50 条");
+    restoreTree(document.body);
+    expect(span.textContent).toBe("Showing up to 50");
+  });
+
+  it("translates a value React rewrote instead of restoring stale English", () => {
+    document.body.innerHTML = "<h1>Dashboard</h1>";
+    translateTree(document.body);
+    expect(document.body.textContent).toBe("仪表盘");
+    document.body.querySelector("h1")!.firstChild!.nodeValue = "Settings";
+    translateTree(document.body);
+    expect(document.body.textContent).toBe("设置");
+    restoreTree(document.body);
+    expect(document.body.textContent).toBe("Settings");
+  });
+
   it("translates incrementally for SPA-added nodes", () => {
     document.body.innerHTML = "<main></main>";
     translateTree(document.body);

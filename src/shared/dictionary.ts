@@ -26,6 +26,7 @@ export const dictionary: ReadonlyMap<string, string> = new Map(
  * sentence.
  */
 export interface DictionaryTemplate {
+  key: string;
   pattern: RegExp;
   names: string[];
   template: string;
@@ -35,23 +36,51 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-export const templates: readonly DictionaryTemplate[] = Object.entries(raw)
-  .filter(([key, value]) => typeof value === "string" && value.trim() !== "" && /\{[A-Za-z0-9_.-]+\}/.test(key))
-  .map(([key, value]) => {
-    const names: string[] = [];
-    const source = normalizeKey(key)
-      .split(/(\{[A-Za-z0-9_.-]+\})/)
-      .map((part) => {
-        const placeholder = part.match(/^\{([A-Za-z0-9_.-]+)\}$/);
-        if (!placeholder) return escapeRegExp(part);
-        names.push(placeholder[1]);
-        // Non-greedy: with several placeholders, the first must give back as
-        // little as possible so the later ones still match their literals.
-        return "(.+?)";
-      })
-      .join("");
-    return { pattern: new RegExp(`^${source}$`), names, template: value as string };
-  });
+function compileTemplate(key: string, value: string): DictionaryTemplate {
+  const names: string[] = [];
+  const source = normalizeKey(key)
+    .split(/(\{[A-Za-z0-9_.-]+\})/)
+    .map((part) => {
+      const placeholder = part.match(/^\{([A-Za-z0-9_.-]+)\}$/);
+      if (!placeholder) return escapeRegExp(part);
+      names.push(placeholder[1]);
+      // Non-greedy: with several placeholders, the first must give back as
+      // little as possible so the later ones still match their literals.
+      return "(.+?)";
+    })
+    .join("");
+  return { key, pattern: new RegExp(`^${source}$`), names, template: value };
+}
+
+function firstWord(text: string): string {
+  const space = text.indexOf(" ");
+  return space === -1 ? text : text.slice(0, space);
+}
+
+/**
+ * Anchored patterns can only match text whose first word equals the pattern's
+ * literal first word. Indexing by that word avoids running all ~115 regexes
+ * against every text node; patterns that start with a placeholder stay in the
+ * wildcard bucket.
+ */
+const templatesByFirstWord = new Map<string, DictionaryTemplate[]>();
+const wildcardTemplates: DictionaryTemplate[] = [];
+const allTemplates: DictionaryTemplate[] = [];
+for (const [key, value] of Object.entries(raw)) {
+  if (typeof value !== "string" || value.trim() === "" || !/\{[A-Za-z0-9_.-]+\}/.test(key)) continue;
+  const entry = compileTemplate(key, value);
+  allTemplates.push(entry);
+  const first = firstWord(normalizeKey(key));
+  if (first.includes("{")) {
+    wildcardTemplates.push(entry);
+  } else {
+    const bucket = templatesByFirstWord.get(first);
+    if (bucket) bucket.push(entry);
+    else templatesByFirstWord.set(first, [entry]);
+  }
+}
+
+export const templates: readonly DictionaryTemplate[] = allTemplates;
 
 export function lookup(text: string): string | undefined {
   return dictionary.get(normalizeKey(text));
@@ -76,7 +105,19 @@ function isPlausibleValue(value: string): boolean {
  */
 export function lookupTemplate(text: string): string | undefined {
   const normalized = normalizeKey(text);
-  for (const entry of templates) {
+  const bucket = templatesByFirstWord.get(firstWord(normalized));
+  if (bucket) {
+    const hit = matchTemplate(bucket, normalized);
+    if (hit !== undefined) return hit;
+  }
+  return matchTemplate(wildcardTemplates, normalized);
+}
+
+function matchTemplate(
+  candidates: readonly DictionaryTemplate[],
+  normalized: string,
+): string | undefined {
+  for (const entry of candidates) {
     const match = entry.pattern.exec(normalized);
     if (!match) continue;
     const raw = entry.names.map((_, index) => match[index + 1] ?? "");

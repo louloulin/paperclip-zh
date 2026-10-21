@@ -105,52 +105,71 @@ export function withLanguageDirective(
  * Everything else — data fields, ids, enums, user content — passes through
  * untouched. Returns the same object when nothing matched.
  */
-export function translateJson<T>(value: T, depth = 0): T {
-  if (!packEnabled() || depth >= MAX_DEPTH) return value;
+export function translateJson<T>(value: T, depth = 0, enabled = packEnabled()): T {
+  if (!enabled || depth >= MAX_DEPTH) return value;
   if (Array.isArray(value)) {
-    let arrayChanged = false;
-    const out = value.map((item) => {
-      const next = translateJson(item, depth + 1);
-      if (next !== item) arrayChanged = true;
-      return next;
-    });
-    return arrayChanged ? (out as unknown as T) : value;
+    // Copy lazily: large payloads that contain no translatable field must not
+    // allocate a parallel tree (or re-read settings per node).
+    let out: unknown[] | null = null;
+    for (let index = 0; index < value.length; index += 1) {
+      const item = value[index];
+      const next = translateJson(item, depth + 1, enabled);
+      if (next !== item) {
+        out ??= value.slice();
+        out[index] = next;
+      }
+    }
+    return (out ?? value) as T;
   }
   if (typeof value === "object" && value !== null) {
-    let changed = false;
-    const out: Record<string, unknown> = {};
-    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    const source = value as Record<string, unknown>;
+    let out: Record<string, unknown> | null = null;
+    for (const key of Object.keys(source)) {
+      const item = source[key];
+      let next: unknown = item;
       if (typeof item === "string" && (ERROR_FIELDS.has(key) || EXACT_FIELDS.has(key))) {
         const zh = ERROR_FIELDS.has(key) ? translate(item) : lookup(item);
-        if (zh !== undefined && zh !== item) {
-          out[key] = zh;
-          changed = true;
-          continue;
+        if (zh !== undefined && zh !== item) next = zh;
+      } else if (key === "errors" && Array.isArray(item)) {
+        let list: unknown[] | null = null;
+        for (let index = 0; index < item.length; index += 1) {
+          const entry: unknown = item[index];
+          const translatedEntry =
+            typeof entry === "string"
+              ? (translate(entry) ?? entry)
+              : translateJson(entry, depth + 1, enabled);
+          if (translatedEntry !== entry) {
+            list ??= item.slice();
+            list[index] = translatedEntry;
+          }
         }
+        if (list) next = list;
+      } else {
+        next = translateJson(item, depth + 1, enabled);
       }
-      if (key === "errors" && Array.isArray(item)) {
-        const next = item.map((entry) =>
-          typeof entry === "string" ? (translate(entry) ?? entry) : translateJson(entry, depth + 1),
-        );
-        const arrayChanged = next.some((entry, index) => entry !== item[index]);
-        if (arrayChanged) changed = true;
-        out[key] = arrayChanged ? next : item;
-        continue;
+      if (next !== item) {
+        out ??= { ...source };
+        out[key] = next;
       }
-      const next = translateJson(item, depth + 1);
-      if (next !== item) changed = true;
-      out[key] = next;
     }
-    return changed ? (out as unknown as T) : value;
+    return (out ?? value) as T;
   }
   return value;
 }
+
+/**
+ * Response bodies above this size are left untouched. Buffering + parsing a
+ * multi-megabyte payload on the main thread is exactly what makes the page
+ * feel frozen, and those payloads are data (runs, traces, transcripts), not
+ * UI errors.
+ */
+const MAX_TRANSLATE_BYTES = 512 * 1024;
 
 function translatedResponse(response: Response, body: unknown): Response {
   const headers = new Headers(response.headers);
   headers.delete("content-length");
   headers.delete("content-encoding");
-  return new Response(JSON.stringify(translateJson(body)), {
+  return new Response(JSON.stringify(body), {
     status: response.status,
     statusText: response.statusText,
     headers,
@@ -179,11 +198,17 @@ export function installFetchPatch(target: { fetch: typeof fetch } = window): voi
     const response = await original(input, nextInit);
     try {
       if (!packEnabled()) return response;
+      if (response.status === 204 || response.status === 304 || !response.body) return response;
       const contentType = response.headers.get("content-type") ?? "";
       if (!contentType.includes("application/json")) return response;
-      const body = await response.clone().json();
+      const declared = Number(response.headers.get("content-length") ?? "0");
+      if (Number.isFinite(declared) && declared > MAX_TRANSLATE_BYTES) return response;
+      const text = await response.clone().text();
+      if (text.length > MAX_TRANSLATE_BYTES) return response;
+      const body: unknown = JSON.parse(text);
       if (typeof body !== "object" || body === null) return response;
-      return translatedResponse(response, body);
+      const translated = translateJson(body, 0, true);
+      return translated === body ? response : translatedResponse(response, translated);
     } catch {
       return response;
     }
